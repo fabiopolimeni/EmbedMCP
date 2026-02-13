@@ -135,6 +135,9 @@ cJSON *mcp_tool_create_memory_error(void);
 // Success result creation
 cJSON *mcp_tool_create_success_result(cJSON *data);
 
+// Image result creation (MCP image content block)
+cJSON *mcp_tool_create_image_result(const char *base64_data, const char *mime_type);
+
 
 // Tool categories (predefined constants)
 #define MCP_TOOL_CATEGORY_GENERAL "general"

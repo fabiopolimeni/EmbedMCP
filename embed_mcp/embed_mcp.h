@@ -41,8 +41,17 @@ typedef enum {
     MCP_RETURN_DOUBLE,
     MCP_RETURN_INT,
     MCP_RETURN_STRING,
-    MCP_RETURN_VOID
+    MCP_RETURN_VOID,
+    MCP_RETURN_IMAGE
 } mcp_return_type_t;
+
+// Image result structure for MCP_RETURN_IMAGE
+// The wrapper function must return a pointer to this struct (allocated with malloc).
+// The framework frees both the struct and its members.
+typedef struct {
+    char* data;       // base64-encoded image data (no data URL prefix)
+    char* mime_type;  // MIME type, e.g. "image/jpeg", "image/png"
+} mcp_image_result_t;
 
 // Universal parameter value - can hold any type
 typedef struct {
