@@ -330,7 +330,7 @@ mcp_session_t* mcp_session_manager_create_session(mcp_session_manager_t* manager
   session->created_time = time(NULL);
   session->last_activity = session->created_time;
   session->expires_at = session->created_time + manager->config.default_session_timeout;
-  session->ref_count = 1;
+  session->ref_count = 2; // 1 for manager, 1 for caller
 
   // 初始化互斥锁
   if (pthread_mutex_init(&session->mutex, NULL) != 0) {
@@ -536,7 +536,9 @@ int mcp_session_manager_cleanup_expired_sessions(mcp_session_manager_t* manager)
       manager->sessions_expired++;
       cleaned++;
 
-      mcp_log_info("Session expired and cleaned: %s", session->session_id);
+      if (session->session_id) {
+          mcp_log_info("Session expired and cleaned: %s", session->session_id);
+      }
 
       // 在锁外清理
       pthread_rwlock_unlock(&manager->sessions_lock);
