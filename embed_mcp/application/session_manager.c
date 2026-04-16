@@ -346,7 +346,9 @@ mcp_session_t* mcp_session_manager_create_session(mcp_session_manager_t* manager
   bool added = false;
   for (size_t i = 0; i < manager->session_capacity; i++) {
     if (!manager->sessions[i]) {
-      manager->sessions[i] = session;
+      // The manager retains its own reference so callers can release the returned
+      // session handle without invalidating manager-owned lookups or cleanup paths.
+      manager->sessions[i] = mcp_session_ref(session);
       manager->session_count++;
       manager->total_sessions_created++;
       added = true;

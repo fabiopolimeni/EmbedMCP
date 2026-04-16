@@ -494,7 +494,10 @@ static void on_message_received(const char* message,
     if (method && cJSON_IsString(method) && strcmp(method->valuestring, "initialize") == 0) {
       mcp_session_t* session = mcp_session_manager_create_session(server->session_manager, NULL);
       if (session) {
-        mcp_connection_set_session_id(connection, mcp_session_get_id(session));
+        if (mcp_connection_set_session_id(connection, mcp_session_get_id(session)) != 0) {
+          (void)mcp_session_manager_remove_session(server->session_manager,
+                                                   mcp_session_get_id(session));
+        }
         mcp_session_unref(session);
       }
     }

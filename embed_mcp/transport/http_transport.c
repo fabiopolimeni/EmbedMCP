@@ -9,13 +9,15 @@
 #include <ctype.h>
 
 static int ascii_strncasecmp(const char* a, const char* b, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        unsigned char ca = (unsigned char)a[i];
-        unsigned char cb = (unsigned char)b[i];
-        if (tolower(ca) != tolower(cb)) return (int)tolower(ca) - (int)tolower(cb);
-        if (ca == '\0' || cb == '\0') return (int)ca - (int)cb;
-    }
-    return 0;
+  for (size_t i = 0; i < n; i++) {
+    unsigned char ca = (unsigned char)a[i];
+    unsigned char cb = (unsigned char)b[i];
+    if (tolower(ca) != tolower(cb))
+      return (int)tolower(ca) - (int)tolower(cb);
+    if (ca == '\0' || cb == '\0')
+      return (int)ca - (int)cb;
+  }
+  return 0;
 }
 
 // Parse a header value from request->head (request line + headers).
@@ -24,376 +26,413 @@ static int http_extract_header_value(const mcp_hal_http_request_t* request,
                                      const char* header_name,
                                      char* out,
                                      size_t out_len) {
-    if (!request || !header_name || !out || out_len == 0 || !request->head || request->head_len == 0) {
-        return 0;
-    }
-
-    const char* p = request->head;
-    const char* end = request->head + request->head_len;
-    size_t name_len = strlen(header_name);
-
-    // Skip request line
-    const char* line = p;
-    while (line < end) {
-        const char* crlf = memchr(line, '\n', (size_t)(end - line));
-        if (!crlf) return 0;
-        line = crlf + 1;
-        break;
-    }
-
-    while (line < end) {
-        const char* lf = memchr(line, '\n', (size_t)(end - line));
-        if (!lf) lf = end;
-
-        // Empty line ends headers
-        if (lf == line || (lf == line + 1 && line[0] == '\r')) break;
-
-        const char* colon = memchr(line, ':', (size_t)(lf - line));
-        if (colon) {
-            size_t key_len = (size_t)(colon - line);
-            if (key_len == name_len && ascii_strncasecmp(line, header_name, name_len) == 0) {
-                const char* v = colon + 1;
-                while (v < lf && (*v == ' ' || *v == '\t')) v++;
-                const char* v_end = lf;
-                while (v_end > v && (v_end[-1] == '\r' || v_end[-1] == ' ' || v_end[-1] == '\t')) v_end--;
-
-                size_t copy_len = (size_t)(v_end - v);
-                if (copy_len >= out_len) copy_len = out_len - 1;
-                memcpy(out, v, copy_len);
-                out[copy_len] = '\0';
-                return 1;
-            }
-        }
-
-        line = lf + 1;
-    }
-
+  if (!request || !header_name || !out || out_len == 0 || !request->head ||
+      request->head_len == 0) {
     return 0;
+  }
+
+  const char* p = request->head;
+  const char* end = request->head + request->head_len;
+  size_t name_len = strlen(header_name);
+
+  // Skip request line
+  const char* line = p;
+  while (line < end) {
+    const char* crlf = memchr(line, '\n', (size_t)(end - line));
+    if (!crlf)
+      return 0;
+    line = crlf + 1;
+    break;
+  }
+
+  while (line < end) {
+    const char* lf = memchr(line, '\n', (size_t)(end - line));
+    if (!lf)
+      lf = end;
+
+    // Empty line ends headers
+    if (lf == line || (lf == line + 1 && line[0] == '\r'))
+      break;
+
+    const char* colon = memchr(line, ':', (size_t)(lf - line));
+    if (colon) {
+      size_t key_len = (size_t)(colon - line);
+      if (key_len == name_len && ascii_strncasecmp(line, header_name, name_len) == 0) {
+        const char* v = colon + 1;
+        while (v < lf && (*v == ' ' || *v == '\t'))
+          v++;
+        const char* v_end = lf;
+        while (v_end > v && (v_end[-1] == '\r' || v_end[-1] == ' ' || v_end[-1] == '\t'))
+          v_end--;
+
+        size_t copy_len = (size_t)(v_end - v);
+        if (copy_len >= out_len)
+          copy_len = out_len - 1;
+        memcpy(out, v, copy_len);
+        out[copy_len] = '\0';
+        return 1;
+      }
+    }
+
+    line = lf + 1;
+  }
+
+  return 0;
 }
 
 // HTTP请求处理函数 - 通过HAL接口
 static void http_request_handler(const mcp_hal_http_request_t* request,
-                                mcp_hal_http_response_t* response,
-                                void* user_data) {
-    mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)user_data;
+                                 mcp_hal_http_response_t* response,
+                                 void* user_data) {
+  mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)user_data;
 
-    mcp_log_debug("HTTP Transport: Received %s request to %s", request->method, request->uri);
+  mcp_log_debug("HTTP Transport: Received %s request to %s", request->method, request->uri);
 
-    const char* endpoint_path = (data && data->endpoint_path) ? data->endpoint_path : "/mcp";
+  const char* endpoint_path = (data && data->endpoint_path) ? data->endpoint_path : "/mcp";
 
-    // CORS preflight
-    if (strcmp(request->method, "OPTIONS") == 0 && strcmp(request->uri, endpoint_path) == 0) {
-        response->status_code = 204;
-        response->headers =
-            "Access-Control-Allow-Origin: *\r\n"
-            "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
-            "Access-Control-Allow-Headers: Content-Type, Authorization, MCP-Session-Id, MCP-Protocol-Version\r\n";
-        response->body = "";
-        response->body_len = 0;
+  // CORS preflight
+  if (strcmp(request->method, "OPTIONS") == 0 && strcmp(request->uri, endpoint_path) == 0) {
+    response->status_code = 204;
+    response->headers = "Access-Control-Allow-Origin: *\r\n"
+                        "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+                        "Access-Control-Allow-Headers: Content-Type, Authorization, "
+                        "MCP-Session-Id, MCP-Protocol-Version\r\n";
+    response->body = "";
+    response->body_len = 0;
+    return;
+  }
+
+  // 检查是否为POST请求到MCP端点
+  if (strcmp(request->method, "POST") == 0 && strcmp(request->uri, endpoint_path) == 0) {
+    // 处理notifications/initialized
+    if (request->body && strstr(request->body, "notifications/initialized")) {
+      mcp_log_debug("HTTP Transport: Received notifications/initialized");
+      response->status_code = 202;
+      response->headers = "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n";
+      response->body = "";
+      response->body_len = 0;
+      return;
+    }
+
+    // 检查是否为MCP请求
+    if (request->body && strstr(request->body, "\"method\"")) {
+      const mcp_platform_hal_t* hal = mcp_platform_get_hal();
+      if (!hal) {
+        response->status_code = 500;
+        response->headers = "Content-Type: application/json\r\n";
+        response->body = "{\"error\":\"Internal server error\"}";
+        response->body_len = strlen(response->body);
         return;
-    }
+      }
 
-    // 检查是否为POST请求到MCP端点
-    if (strcmp(request->method, "POST") == 0 && strcmp(request->uri, endpoint_path) == 0) {
+      // 创建连接对象
+      mcp_connection_t* connection = hal->memory.alloc(sizeof(mcp_connection_t));
+      if (!connection) {
+        mcp_log_error("HTTP Transport: Failed to allocate connection");
+        response->status_code = 500;
+        response->headers = "Content-Type: application/json\r\n";
+        response->body = "{\"error\":\"Internal server error\"}";
+        response->body_len = strlen(response->body);
+        return;
+      }
+      memset(connection, 0, sizeof(mcp_connection_t));
 
-        // 处理notifications/initialized
-        if (request->body && strstr(request->body, "notifications/initialized")) {
-            mcp_log_debug("HTTP Transport: Received notifications/initialized");
-            response->status_code = 202;
-            response->headers = "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n";
-            response->body = "";
-            response->body_len = 0;
-            return;
+      // 初始化连接对象
+      connection->transport = data->transport;
+      connection->is_active = true;
+      connection->created_time = time(NULL);
+      connection->last_activity = time(NULL);
+      connection->private_data = (void*)request->connection;  // 保存HAL连接
+
+      // Capture streamable-http headers if present
+      char session_id[128] = {0};
+      if (http_extract_header_value(request, "MCP-Session-Id", session_id, sizeof(session_id))) {
+        if (mcp_connection_set_session_id(connection, session_id) != 0) {
+          mcp_log_error("HTTP Transport: Failed to restore MCP-Session-Id header");
+          response->status_code = 500;
+          response->headers = "Content-Type: application/json\r\n";
+          response->body = "{\"error\":\"Internal server error\"}";
+          response->body_len = strlen(response->body);
+          hal->memory.free(connection);
+          return;
         }
+      }
 
-        // 检查是否为MCP请求
-        if (request->body && strstr(request->body, "\"method\"")) {
-            const mcp_platform_hal_t *hal = mcp_platform_get_hal();
-            if (!hal) {
-                response->status_code = 500;
-                response->headers = "Content-Type: application/json\r\n";
-                response->body = "{\"error\":\"Internal server error\"}";
-                response->body_len = strlen(response->body);
-                return;
-            }
+      // 调用消息接收回调
+      if (data->transport->on_message) {
+        data->transport->on_message(
+          request->body, request->body_len, connection, data->transport->user_data);
+      }
 
-            // 创建连接对象
-            mcp_connection_t* connection = hal->memory.alloc(sizeof(mcp_connection_t));
-            if (!connection) {
-                mcp_log_error("HTTP Transport: Failed to allocate connection");
-                response->status_code = 500;
-                response->headers = "Content-Type: application/json\r\n";
-                response->body = "{\"error\":\"Internal server error\"}";
-                response->body_len = strlen(response->body);
-                return;
-            }
-            memset(connection, 0, sizeof(mcp_connection_t));
+      // 请求已由on_message处理（在send回调中同步发送了HTTP响应）。
+      // 销毁此请求期间分配的临时连接对象以避免每次请求泄漏。
+      mcp_connection_close(connection);
 
-            // 初始化连接对象
-            connection->transport = data->transport;
-            connection->is_active = true;
-            connection->created_time = time(NULL);
-            connection->last_activity = time(NULL);
-            connection->private_data = (void*)request->connection;  // 保存HAL连接
-
-            // Capture streamable-http headers if present
-            char session_id[128] = {0};
-            if (http_extract_header_value(request, "MCP-Session-Id", session_id, sizeof(session_id))) {
-                mcp_connection_set_session_id(connection, session_id);
-            }
-
-            // 调用消息接收回调
-            if (data->transport->on_message) {
-                data->transport->on_message(request->body, request->body_len, connection, data->transport->user_data);
-            }
-
-            // 延迟响应 - 不设置响应内容，等待send函数调用
-            response->status_code = 0;  // 特殊标记表示延迟响应
-            return;
-        }
+      // 延迟响应 - 不设置响应内容，等待send函数调用
+      response->status_code = 0;  // 特殊标记表示延迟响应
+      return;
     }
+  }
 
-    // 默认404响应
-    response->status_code = 404;
-    response->headers = "Content-Type: text/plain\r\n";
-    response->body = "Not Found";
-    response->body_len = strlen(response->body);
+  // 默认404响应
+  response->status_code = 404;
+  response->headers = "Content-Type: text/plain\r\n";
+  response->body = "Not Found";
+  response->body_len = strlen(response->body);
+}
+
+void mcp_http_transport_debug_handle_request_for_test(mcp_transport_t* transport,
+                                                      const mcp_hal_http_request_t* request,
+                                                      mcp_hal_http_response_t* response) {
+  if (!transport || !request || !response) {
+    return;
+  }
+
+  http_request_handler(request, response, transport->private_data);
 }
 
 // HTTP transport interface implementation
 const mcp_transport_interface_t mcp_http_transport_interface = {
-    .init = mcp_http_transport_init_impl,
-    .start = mcp_http_transport_start_impl,
-    .stop = mcp_http_transport_stop_impl,
-    .send = mcp_http_transport_send_impl,
-    .close_connection = mcp_http_transport_close_connection_impl,
-    .get_stats = mcp_http_transport_get_stats_impl,
-    .cleanup = mcp_http_transport_cleanup_impl
-};
+  .init = mcp_http_transport_init_impl,
+  .start = mcp_http_transport_start_impl,
+  .stop = mcp_http_transport_stop_impl,
+  .send = mcp_http_transport_send_impl,
+  .close_connection = mcp_http_transport_close_connection_impl,
+  .get_stats = mcp_http_transport_get_stats_impl,
+  .cleanup = mcp_http_transport_cleanup_impl};
 
 // HTTP-specific functions
-int mcp_http_transport_init_impl(mcp_transport_t *transport, const mcp_transport_config_t *config) {
-    if (!transport || !config || config->type != MCP_TRANSPORT_HTTP) {
-        mcp_log_error("HTTP Transport: Invalid parameters for init");
-        return -1;
-    }
+int mcp_http_transport_init_impl(mcp_transport_t* transport, const mcp_transport_config_t* config) {
+  if (!transport || !config || config->type != MCP_TRANSPORT_HTTP) {
+    mcp_log_error("HTTP Transport: Invalid parameters for init");
+    return -1;
+  }
 
-    const mcp_platform_hal_t *hal = mcp_platform_get_hal();
-    if (!hal) return -1;
+  const mcp_platform_hal_t* hal = mcp_platform_get_hal();
+  if (!hal)
+    return -1;
 
-    mcp_http_transport_data_t *data = hal->memory.alloc(sizeof(mcp_http_transport_data_t));
-    if (!data) {
-        mcp_log_error("HTTP Transport: Failed to allocate transport data");
-        return -1;
-    }
-    memset(data, 0, sizeof(mcp_http_transport_data_t));
+  mcp_http_transport_data_t* data = hal->memory.alloc(sizeof(mcp_http_transport_data_t));
+  if (!data) {
+    mcp_log_error("HTTP Transport: Failed to allocate transport data");
+    return -1;
+  }
+  memset(data, 0, sizeof(mcp_http_transport_data_t));
 
-    // 获取HAL接口
-    data->hal = mcp_platform_get_hal();
-    if (!data->hal) {
-        mcp_log_error("HTTP Transport: No platform HAL available");
-        hal->memory.free(data);
-        return -1;
-    }
-
-    // Store configuration
-    transport->config = hal->memory.alloc(sizeof(mcp_transport_config_t));
-    if (transport->config) {
-        memset(transport->config, 0, sizeof(mcp_transport_config_t));
-        *transport->config = *config;
-        // Duplicate string fields
-        if (config->config.http.bind_address) {
-            transport->config->config.http.bind_address = hal_strdup(hal, config->config.http.bind_address);
-        }
-        if (config->config.http.endpoint_path) {
-            transport->config->config.http.endpoint_path = hal_strdup(hal, config->config.http.endpoint_path);
-        }
-    }
-
-    // Initialize HTTP data
-    data->port = config->config.http.port;
-    data->bind_address = config->config.http.bind_address ? hal_strdup(hal, config->config.http.bind_address) : hal_strdup(hal, "0.0.0.0");
-    data->endpoint_path = config->config.http.endpoint_path ? hal_strdup(hal, config->config.http.endpoint_path) : hal_strdup(hal, "/mcp");
-    data->enable_cors = config->config.http.enable_cors;
-    data->max_request_size = config->config.http.max_request_size;
-    data->server_running = false;
-    data->transport = transport;
-
-    transport->private_data = data;
-    transport->state = MCP_TRANSPORT_STATE_STOPPED;
-
-    mcp_log_info("HTTP Transport: Initialized on %s:%d", data->bind_address, data->port);
-    return 0;
-}
-
-int mcp_http_transport_start_impl(mcp_transport_t *transport) {
-    if (!transport || !transport->private_data) {
-        mcp_log_error("HTTP Transport: Invalid parameters for start");
-        return -1;
-    }
-
-    mcp_http_transport_data_t *data = (mcp_http_transport_data_t*)transport->private_data;
-
-    if (data->server_running) {
-        mcp_log_warn("HTTP Transport: Server already running");
-        return 0;
-    }
-
-    // 构建监听地址
-    char listen_url[512];
-    snprintf(listen_url, sizeof(listen_url), "http://%s:%d", data->bind_address, data->port);
-
-    // 通过HAL启动HTTP服务器 - 使用通用接口名称
-    data->server = data->hal->network.http_server_start(listen_url, http_request_handler, data);
-    if (!data->server) {
-        mcp_log_error("HTTP Transport: Failed to start server on %s", listen_url);
-        return -1;
-    }
-
-    data->server_running = true;
-    transport->state = MCP_TRANSPORT_STATE_RUNNING;
-
-    mcp_log_info("HTTP Transport: Server started on %s:%d", data->bind_address, data->port);
-    return 0;
-}
-
-int mcp_http_transport_stop_impl(mcp_transport_t *transport) {
-    if (!transport || !transport->private_data) {
-        return -1;
-    }
-
-    mcp_http_transport_data_t *data = (mcp_http_transport_data_t*)transport->private_data;
-
-    if (!data->server_running) {
-        return 0;
-    }
-
-    // 通过HAL停止服务器 - 使用通用接口名称
-    if (data->server) {
-        data->hal->network.http_server_stop(data->server);
-        data->server = NULL;
-    }
-
-    data->server_running = false;
-    transport->state = MCP_TRANSPORT_STATE_STOPPED;
-
-    mcp_log_info("HTTP Transport: Server stopped");
-    return 0;
-}
-
-int mcp_http_transport_send_impl(mcp_connection_t *connection, const char *message, size_t length) {
-    if (!connection || !message || length == 0) {
-        return -1;
-    }
-
-    mcp_http_transport_data_t *data = (mcp_http_transport_data_t*)connection->transport->private_data;
-    if (!data) {
-        return -1;
-    }
-
-    // 获取HAL连接
-    mcp_hal_connection_t hal_conn = (mcp_hal_connection_t)connection->private_data;
-    if (!hal_conn) {
-        mcp_log_error("HTTP Transport: No HAL connection in send");
-        return -1;
-    }
-
-    char headers[1024];
-    int written = 0;
-    written += snprintf(headers + written, sizeof(headers) - (size_t)written,
-                        "Content-Type: application/json\r\n"
-                        "Access-Control-Allow-Origin: *\r\n"
-                        "Access-Control-Allow-Headers: Content-Type, Authorization, MCP-Session-Id, MCP-Protocol-Version\r\n"
-                        "MCP-Protocol-Version: %s\r\n",
-                        MCP_PROTOCOL_VERSION);
-    if (connection->session_id && connection->session_id[0] != '\0' && (size_t)written < sizeof(headers)) {
-        written += snprintf(headers + written, sizeof(headers) - (size_t)written,
-                            "MCP-Session-Id: %s\r\n", connection->session_id);
-    }
-
-    // 构造HAL响应
-    mcp_hal_http_response_t response = {
-        .status_code = 200,
-        .headers = headers,
-        .body = message,
-        .body_len = length
-    };
-
-    // 通过HAL发送响应 - 使用通用接口名称
-    int result = data->hal->network.http_response_send(hal_conn, &response);
-    if (result > 0) {
-        mcp_log_debug("HTTP Transport: Sent response (%zu bytes)", length);
-    }
-
-    return result;
-}
-
-int mcp_http_transport_close_connection_impl(mcp_connection_t *connection) {
-    if (!connection) {
-        return -1;
-    }
-
-    // HTTP连接由HAL层管理，这里只标记为非活跃
-    connection->is_active = false;
-    return 0;
-}
-
-int mcp_http_transport_get_stats_impl(mcp_transport_t *transport, void *stats) {
-    if (!transport || !transport->private_data || !stats) {
-        return -1;
-    }
-
-    mcp_http_transport_data_t *data = (mcp_http_transport_data_t*)transport->private_data;
-
-    // 简单的统计信息
-    struct {
-        size_t total_requests;
-        size_t active_connections;
-        bool server_running;
-    } *http_stats = stats;
-
-    http_stats->total_requests = data->total_requests;
-    http_stats->active_connections = data->active_connections;
-    http_stats->server_running = data->server_running;
-
-    return 0;
-}
-
-void mcp_http_transport_cleanup_impl(mcp_transport_t *transport) {
-    if (!transport || !transport->private_data) {
-        return;
-    }
-
-    const mcp_platform_hal_t *hal = mcp_platform_get_hal();
-    if (!hal) return;
-
-    mcp_http_transport_data_t *data = (mcp_http_transport_data_t*)transport->private_data;
-
-    // 停止服务器
-    mcp_http_transport_stop_impl(transport);
-
-    // 释放资源
-    hal_free(hal, data->bind_address);
-    hal_free(hal, data->endpoint_path);
+  // 获取HAL接口
+  data->hal = mcp_platform_get_hal();
+  if (!data->hal) {
+    mcp_log_error("HTTP Transport: No platform HAL available");
     hal->memory.free(data);
+    return -1;
+  }
 
-    transport->private_data = NULL;
+  // Store configuration
+  transport->config = hal->memory.alloc(sizeof(mcp_transport_config_t));
+  if (transport->config) {
+    memset(transport->config, 0, sizeof(mcp_transport_config_t));
+    *transport->config = *config;
+    // Duplicate string fields
+    if (config->config.http.bind_address) {
+      transport->config->config.http.bind_address =
+        hal_strdup(hal, config->config.http.bind_address);
+    }
+    if (config->config.http.endpoint_path) {
+      transport->config->config.http.endpoint_path =
+        hal_strdup(hal, config->config.http.endpoint_path);
+    }
+  }
 
-    mcp_log_info("HTTP Transport: Cleanup completed");
+  // Initialize HTTP data
+  data->port = config->config.http.port;
+  data->bind_address = config->config.http.bind_address ?
+                         hal_strdup(hal, config->config.http.bind_address) :
+                         hal_strdup(hal, "0.0.0.0");
+  data->endpoint_path = config->config.http.endpoint_path ?
+                          hal_strdup(hal, config->config.http.endpoint_path) :
+                          hal_strdup(hal, "/mcp");
+  data->enable_cors = config->config.http.enable_cors;
+  data->max_request_size = config->config.http.max_request_size;
+  data->server_running = false;
+  data->transport = transport;
+
+  transport->private_data = data;
+  transport->state = MCP_TRANSPORT_STATE_STOPPED;
+
+  mcp_log_info("HTTP Transport: Initialized on %s:%d", data->bind_address, data->port);
+  return 0;
+}
+
+int mcp_http_transport_start_impl(mcp_transport_t* transport) {
+  if (!transport || !transport->private_data) {
+    mcp_log_error("HTTP Transport: Invalid parameters for start");
+    return -1;
+  }
+
+  mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)transport->private_data;
+
+  if (data->server_running) {
+    mcp_log_warn("HTTP Transport: Server already running");
+    return 0;
+  }
+
+  // 构建监听地址
+  char listen_url[512];
+  snprintf(listen_url, sizeof(listen_url), "http://%s:%d", data->bind_address, data->port);
+
+  // 通过HAL启动HTTP服务器 - 使用通用接口名称
+  data->server = data->hal->network.http_server_start(listen_url, http_request_handler, data);
+  if (!data->server) {
+    mcp_log_error("HTTP Transport: Failed to start server on %s", listen_url);
+    return -1;
+  }
+
+  data->server_running = true;
+  transport->state = MCP_TRANSPORT_STATE_RUNNING;
+
+  mcp_log_info("HTTP Transport: Server started on %s:%d", data->bind_address, data->port);
+  return 0;
+}
+
+int mcp_http_transport_stop_impl(mcp_transport_t* transport) {
+  if (!transport || !transport->private_data) {
+    return -1;
+  }
+
+  mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)transport->private_data;
+
+  if (!data->server_running) {
+    return 0;
+  }
+
+  // 通过HAL停止服务器 - 使用通用接口名称
+  if (data->server) {
+    data->hal->network.http_server_stop(data->server);
+    data->server = NULL;
+  }
+
+  data->server_running = false;
+  transport->state = MCP_TRANSPORT_STATE_STOPPED;
+
+  mcp_log_info("HTTP Transport: Server stopped");
+  return 0;
+}
+
+int mcp_http_transport_send_impl(mcp_connection_t* connection, const char* message, size_t length) {
+  if (!connection || !message || length == 0) {
+    return -1;
+  }
+
+  mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)connection->transport->private_data;
+  if (!data) {
+    return -1;
+  }
+
+  // 获取HAL连接
+  mcp_hal_connection_t hal_conn = (mcp_hal_connection_t)connection->private_data;
+  if (!hal_conn) {
+    mcp_log_error("HTTP Transport: No HAL connection in send");
+    return -1;
+  }
+
+  char headers[1024];
+  int written = 0;
+  written += snprintf(headers + written,
+                      sizeof(headers) - (size_t)written,
+                      "Content-Type: application/json\r\n"
+                      "Access-Control-Allow-Origin: *\r\n"
+                      "Access-Control-Allow-Headers: Content-Type, Authorization, MCP-Session-Id, "
+                      "MCP-Protocol-Version\r\n"
+                      "MCP-Protocol-Version: %s\r\n",
+                      MCP_PROTOCOL_VERSION);
+  if (connection->session_id && connection->session_id[0] != '\0' &&
+      (size_t)written < sizeof(headers)) {
+    written += snprintf(headers + written,
+                        sizeof(headers) - (size_t)written,
+                        "MCP-Session-Id: %s\r\n",
+                        connection->session_id);
+  }
+
+  // 构造HAL响应
+  mcp_hal_http_response_t response = {
+    .status_code = 200, .headers = headers, .body = message, .body_len = length};
+
+  // 通过HAL发送响应 - 使用通用接口名称
+  int result = data->hal->network.http_response_send(hal_conn, &response);
+  if (result > 0) {
+    mcp_log_debug("HTTP Transport: Sent response (%zu bytes)", length);
+  }
+
+  return result;
+}
+
+int mcp_http_transport_close_connection_impl(mcp_connection_t* connection) {
+  if (!connection) {
+    return -1;
+  }
+
+  // HTTP连接由HAL层管理，这里只标记为非活跃
+  connection->is_active = false;
+  return 0;
+}
+
+int mcp_http_transport_get_stats_impl(mcp_transport_t* transport, void* stats) {
+  if (!transport || !transport->private_data || !stats) {
+    return -1;
+  }
+
+  mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)transport->private_data;
+
+  // 简单的统计信息
+  struct {
+    size_t total_requests;
+    size_t active_connections;
+    bool server_running;
+  }* http_stats = stats;
+
+  http_stats->total_requests = data->total_requests;
+  http_stats->active_connections = data->active_connections;
+  http_stats->server_running = data->server_running;
+
+  return 0;
+}
+
+void mcp_http_transport_cleanup_impl(mcp_transport_t* transport) {
+  if (!transport || !transport->private_data) {
+    return;
+  }
+
+  const mcp_platform_hal_t* hal = mcp_platform_get_hal();
+  if (!hal)
+    return;
+
+  mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)transport->private_data;
+
+  // 停止服务器
+  mcp_http_transport_stop_impl(transport);
+
+  // 释放资源
+  hal_free(hal, data->bind_address);
+  hal_free(hal, data->endpoint_path);
+  hal->memory.free(data);
+
+  transport->private_data = NULL;
+
+  mcp_log_info("HTTP Transport: Cleanup completed");
 }
 
 // 轮询函数 - 供主循环调用
-int mcp_http_transport_poll(mcp_transport_t *transport) {
-    if (!transport || !transport->private_data) {
-        return -1;
-    }
+int mcp_http_transport_poll(mcp_transport_t* transport) {
+  if (!transport || !transport->private_data) {
+    return -1;
+  }
 
-    mcp_http_transport_data_t *data = (mcp_http_transport_data_t*)transport->private_data;
+  mcp_http_transport_data_t* data = (mcp_http_transport_data_t*)transport->private_data;
 
-    // 通过HAL轮询 - 使用通用接口名称
-    if (data->server_running && data->hal) {
-        return data->hal->network.network_poll(10); // 10ms超时
-    }
+  // 通过HAL轮询 - 使用通用接口名称
+  if (data->server_running && data->hal) {
+    return data->hal->network.network_poll(10);  // 10ms超时
+  }
 
-    return 0;
+  return 0;
 }
